@@ -33,16 +33,15 @@ async function printBanner() {
 async function cmdStart() {
   console.log('Starting PotatoClaw...\n');
   try {
-    const gateway = require('../src/core/gateway');
-    await gateway.start();
+    const { start } = require('../src/app');
+    const app = await start();
+
+    // Graceful shutdown
+    process.once('SIGINT',  () => app.stop().then(() => process.exit(0)));
+    process.once('SIGTERM', () => app.stop().then(() => process.exit(0)));
   } catch (err) {
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('Gateway module not yet implemented. Run `npm install` first.');
-      console.error(err.message);
-    } else {
-      console.error('Failed to start gateway:', err.message);
-      log.error({ err }, 'Gateway start failed');
-    }
+    console.error('Failed to start PotatoClaw:', err.message);
+    log.error({ err }, 'Start failed');
     process.exit(1);
   }
 }
@@ -54,49 +53,8 @@ async function cmdChat(args) {
   console.log(`\nStarting terminal chat${agentId ? ` with agent: ${agentId}` : ' (default agent)'}...`);
   console.log('Type your message and press Enter. Use Ctrl+C to exit.\n');
 
-  let agent;
-  try {
-    const { createTerminalAgent } = require('../src/agents/terminal');
-    agent = await createTerminalAgent(agentId);
-  } catch (err) {
-    if (err.code === 'MODULE_NOT_FOUND') {
-      // Fall back to a simple Claude SDK chat if the full stack isn't built yet
-      await simpleChat(agentId);
-      return;
-    }
-    throw err;
-  }
-
-  const readline = require('readline');
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: '\nYou: ',
-  });
-
-  rl.prompt();
-
-  rl.on('line', async (line) => {
-    const text = line.trim();
-    if (!text) {
-      rl.prompt();
-      return;
-    }
-    rl.pause();
-    try {
-      const response = await agent.chat(text);
-      console.log(`\nAgent: ${response}\n`);
-    } catch (err) {
-      console.error(`\nError: ${err.message}\n`);
-    }
-    rl.resume();
-    rl.prompt();
-  });
-
-  rl.on('close', () => {
-    console.log('\nGoodbye!');
-    process.exit(0);
-  });
+  // Use simple SDK chat (no full stack needed for terminal mode)
+  await simpleChat(agentId);
 }
 
 /**

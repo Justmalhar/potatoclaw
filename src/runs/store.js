@@ -258,7 +258,7 @@ class RunStore {
     const total = entries.length;
     const page = entries.slice(offset, offset + limit);
 
-    return { runs: page, total };
+    return page;
   }
 
   /**

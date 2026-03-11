@@ -1,175 +1,236 @@
 /* ============================================================
-   Sessions Page — Transcript viewer
+   Sessions Page — Conversation transcript viewer
    ============================================================ */
 (function () {
   'use strict';
 
-  let _agents   = [];
+  let _agents = [];
   let _sessions = [];
-  let _selectedAgent = null;
+  let _selectedAgent = '';
+  let _panel = null;
 
-  function escHtml(str) {
-    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function timeAgo(ts) {
     if (!ts) return '';
-    const d = new Date(ts);
-    return d.toLocaleString();
+    const diff = Date.now() - new Date(ts).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
   }
 
-  async function selectAgent(agentId) {
-    _selectedAgent = agentId;
-
-    document.querySelectorAll('.sessions-agent-item').forEach((el) => {
-      el.classList.toggle('active', el.dataset.agentId === agentId);
-    });
-
-    const listEl = document.getElementById('sessions-list');
-    if (!listEl) return;
-    listEl.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:16px auto;"></div>';
-
-    try {
-      const res = await api('GET', `/api/sessions/${agentId}`);
-      _sessions = res?.sessions || [];
-      renderSessionsList(listEl, agentId);
-    } catch (err) {
-      listEl.innerHTML = `<p class="text-dim text-sm" style="padding:12px;">${err.message}</p>`;
-    }
+  function fmtSize(bytes) {
+    if (!bytes) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
-  function renderSessionsList(container, agentId) {
+  // --------------------------------------------------------
+  // Session table
+  // --------------------------------------------------------
+  function renderSessionTable() {
+    const wrap = document.getElementById('sessions-table-wrap');
+    if (!wrap) return;
+
     if (_sessions.length === 0) {
-      container.innerHTML = '<p class="text-dim text-sm" style="padding:12px;">No sessions</p>';
+      wrap.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">💬</div>
+          <div class="empty-state-title">No sessions found</div>
+          <div class="empty-state-desc">${_selectedAgent ? 'No conversations for this agent yet.' : 'Select an agent to view sessions.'}</div>
+        </div>`;
       return;
     }
 
-    container.innerHTML = _sessions.map((s) => `
-      <div class="nav-item" style="flex-direction:column;align-items:flex-start;gap:2px;"
-           onclick="SessionsPage.openSession('${escHtml(agentId)}','${escHtml(s.key)}')">
-        <span class="text-xs font-mono truncate" style="width:100%;">${escHtml(s.key)}</span>
-        <span class="text-xs text-dim">${s.messageCount || 0} messages · ${timeAgo(s.lastActivity)}</span>
-      </div>
-    `).join('');
-  }
-
-  async function openSession(agentId, key) {
-    const viewerEl = document.getElementById('transcript-viewer');
-    if (!viewerEl) return;
-
-    viewerEl.innerHTML = '<div class="loading-spinner-wrap"><div class="spinner"></div></div>';
-
-    try {
-      const res = await api('GET', `/api/sessions/${agentId}/${encodeURIComponent(key)}?limit=200`);
-      const transcript = res?.transcript || [];
-      renderTranscript(viewerEl, key, agentId, transcript);
-    } catch (err) {
-      viewerEl.innerHTML = `<p class="text-dim">${err.message}</p>`;
-    }
-  }
-
-  function renderTranscript(container, key, agentId, transcript) {
-    const msgs = transcript.map((msg) => {
-      const isUser = msg.role === 'user';
-      const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
-      return `
-        <div style="margin-bottom:12px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span class="badge ${isUser ? 'badge-idle' : 'badge-running'}">${escHtml(msg.role || 'unknown')}</span>
-            ${ts ? `<span class="text-dim text-xs">${ts}</span>` : ''}
-          </div>
-          <div style="padding:10px 14px;background:var(--surface-2);border-radius:var(--radius);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;">
-            ${escHtml(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content))}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    container.innerHTML = `
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <div class="font-mono text-xs text-dim">${escHtml(key)}</div>
-          <div class="text-sm text-muted mt-1">${transcript.length} messages</div>
-        </div>
-        <button class="btn btn-danger btn-sm" onclick="SessionsPage.deleteSession('${escHtml(agentId)}','${escHtml(key)}')">Delete Session</button>
-      </div>
-      <div style="max-height:calc(100vh - 300px);overflow-y:auto;">
-        ${msgs || '<p class="text-dim text-sm">No messages</p>'}
+    wrap.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Session Key</th>
+              <th>Last Activity</th>
+              <th>Messages</th>
+              <th>Size</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${_sessions.map((s) => `
+              <tr style="cursor:pointer;" onclick="SessionsPage.openSession('${esc(s.key || s.id)}')">
+                <td class="font-mono text-xs">${esc((s.key || s.id || '').slice(0, 20))}</td>
+                <td class="text-dim">${timeAgo(s.lastActivity || s.last_activity || s.updatedAt)}</td>
+                <td>${s.messageCount || s.message_count || '—'}</td>
+                <td class="text-dim">${fmtSize(s.size || s.fileSize)}</td>
+                <td onclick="event.stopPropagation();">
+                  <button class="btn btn-danger btn-xs" onclick="SessionsPage.deleteSession('${esc(s.key || s.id)}')">Delete</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
       </div>
     `;
   }
 
-  async function deleteSession(agentId, key) {
-    if (!confirm('Delete this session?')) return;
+  // --------------------------------------------------------
+  // Detail panel — transcript viewer
+  // --------------------------------------------------------
+  async function openSession(sessionKey) {
+    if (!_panel) {
+      _panel = document.createElement('div');
+      _panel.className = 'detail-panel';
+      document.body.appendChild(_panel);
+    }
+
+    _panel.innerHTML = `
+      <div class="detail-panel-header">
+        <div>
+          <div style="font-size:14px;font-weight:700;">Session Transcript</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;font-family:monospace;">${esc(sessionKey)}</div>
+        </div>
+        <button class="btn-icon" onclick="SessionsPage.closePanel()">✕</button>
+      </div>
+      <div class="detail-panel-body" id="session-transcript">
+        <div class="loading-spinner-wrap"><div class="spinner"></div></div>
+      </div>
+    `;
+
+    _panel.classList.add('open');
+
     try {
-      await api('DELETE', `/api/sessions/${agentId}/${encodeURIComponent(key)}`);
+      const res = await api('GET', `/api/sessions/${encodeURIComponent(_selectedAgent)}/${encodeURIComponent(sessionKey)}`);
+      const messages = res?.messages || res?.transcript || [];
+      const el = document.getElementById('session-transcript');
+      if (!el) return;
+
+      if (messages.length === 0) {
+        el.innerHTML = '<p class="text-dim text-sm">No messages in this session</p>';
+        return;
+      }
+
+      el.innerHTML = messages.map((msg) => {
+        const role = msg.role || 'user';
+        const content = msg.content || '';
+        const ts = msg.timestamp || msg.created_at || '';
+
+        const isUser = role === 'user';
+        const isSystem = role === 'system';
+
+        if (isSystem) {
+          return `
+            <div style="padding:8px 12px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:var(--radius);margin-bottom:8px;font-size:11px;color:var(--text-muted);">
+              <span style="font-weight:700;color:var(--accent-light);">system</span><br>
+              ${esc(content)}
+            </div>`;
+        }
+
+        return `
+          <div style="margin-bottom:12px;display:flex;flex-direction:column;align-items:${isUser ? 'flex-end' : 'flex-start'};">
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:3px;${isUser ? 'text-align:right;' : ''}">${esc(role)} ${ts ? '· ' + new Date(ts).toLocaleTimeString() : ''}</div>
+            <div style="
+              max-width:85%;
+              background:${isUser ? 'rgba(124,58,237,0.15)' : 'var(--surface-2)'};
+              border:1px solid ${isUser ? 'rgba(124,58,237,0.3)' : 'var(--border)'};
+              border-radius:${isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px'};
+              padding:10px 14px;
+              font-size:12px;
+              line-height:1.6;
+              color:var(--text);
+              white-space:pre-wrap;
+              word-break:break-word;
+            ">${esc(typeof content === 'string' ? content : JSON.stringify(content, null, 2))}</div>
+          </div>`;
+      }).join('');
+
+      // Scroll to bottom
+      el.scrollTop = el.scrollHeight;
+    } catch (err) {
+      const el = document.getElementById('session-transcript');
+      if (el) el.innerHTML = `<p style="color:var(--red);">Error: ${esc(err.message)}</p>`;
+    }
+  }
+
+  function closePanel() {
+    if (_panel) _panel.classList.remove('open');
+  }
+
+  async function deleteSession(sessionKey) {
+    if (!confirm('Delete this session transcript?')) return;
+    try {
+      await api('DELETE', `/api/sessions/${encodeURIComponent(_selectedAgent)}/${encodeURIComponent(sessionKey)}`);
+      _sessions = _sessions.filter((s) => (s.key || s.id) !== sessionKey);
+      renderSessionTable();
+      closePanel();
       toast('Session deleted', 'success');
-      const viewerEl = document.getElementById('transcript-viewer');
-      if (viewerEl) viewerEl.innerHTML = '<p class="text-dim">Session deleted.</p>';
-      // Refresh sessions list
-      if (_selectedAgent) await selectAgent(_selectedAgent);
     } catch (err) {
       toast(err.message, 'error');
     }
   }
 
-  window.SessionsPage = { selectAgent, openSession, deleteSession };
+  async function loadSessions(agentId) {
+    _selectedAgent = agentId;
+    _sessions = [];
+    renderSessionTable();
+
+    if (!agentId) return;
+
+    const wrap = document.getElementById('sessions-table-wrap');
+    if (wrap) wrap.innerHTML = '<div class="loading-spinner-wrap"><div class="spinner"></div></div>';
+
+    try {
+      const res = await api('GET', `/api/sessions/${encodeURIComponent(agentId)}`);
+      _sessions = res?.sessions || res || [];
+      renderSessionTable();
+    } catch (err) {
+      if (wrap) wrap.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">Failed to load sessions</div><div class="empty-state-desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  window.SessionsPage = { openSession, closePanel, deleteSession };
 
   window.Pages = window.Pages || {};
   window.Pages.sessions = {
     async render(container) {
       container.innerHTML = `
-        <div style="display:grid;grid-template-columns:200px 240px 1fr;gap:16px;min-height:calc(100vh - 180px);">
-          <!-- Agents -->
-          <div class="panel" style="overflow:hidden;">
-            <div class="panel-header"><span class="panel-title">Agents</span></div>
-            <div id="sessions-agents-list">
-              <div class="loading-spinner-wrap"><div class="spinner" style="width:20px;height:20px;"></div></div>
-            </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+          <h2 style="font-size:15px;font-weight:700;">Session Transcripts</h2>
+          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+            <label class="form-label" style="margin:0;white-space:nowrap;">Agent:</label>
+            <select class="form-select" id="sessions-agent-select" style="width:200px;" onchange="SessionsPage._loadSessions(this.value)">
+              <option value="">Select agent...</option>
+            </select>
           </div>
-
-          <!-- Sessions -->
-          <div class="panel" style="overflow:hidden;">
-            <div class="panel-header"><span class="panel-title">Sessions</span></div>
-            <div id="sessions-list" style="overflow-y:auto;max-height:calc(100vh - 200px);">
-              <p class="text-dim text-sm" style="padding:12px;">Select an agent</p>
-            </div>
-          </div>
-
-          <!-- Transcript -->
-          <div class="panel">
-            <div class="panel-header"><span class="panel-title">Transcript</span></div>
-            <div class="panel-body" id="transcript-viewer">
-              <p class="text-dim text-sm">Select a session to view transcript</p>
-            </div>
+        </div>
+        <div id="sessions-table-wrap">
+          <div class="empty-state">
+            <div class="empty-state-icon">💬</div>
+            <div class="empty-state-title">Select an agent</div>
+            <div class="empty-state-desc">Choose an agent above to browse their conversation sessions.</div>
           </div>
         </div>
       `;
 
+      window.SessionsPage._loadSessions = loadSessions;
+
       try {
         const res = await api('GET', '/api/agents');
-        _agents = res?.agents || [];
-
-        const listEl = document.getElementById('sessions-agents-list');
-        if (!listEl) return;
-
-        if (_agents.length === 0) {
-          listEl.innerHTML = '<p class="text-dim text-sm" style="padding:12px;">No agents</p>';
-          return;
+        _agents = res?.agents || res || [];
+        const sel = document.getElementById('sessions-agent-select');
+        if (sel) {
+          _agents.forEach((a) => {
+            const opt = document.createElement('option');
+            opt.value = a.id;
+            opt.textContent = `${a.avatar || '🤖'} ${a.name}`;
+            sel.appendChild(opt);
+          });
         }
-
-        listEl.innerHTML = _agents.map((a) => `
-          <div class="nav-item sessions-agent-item" data-agent-id="${escHtml(a.id)}"
-               onclick="SessionsPage.selectAgent('${escHtml(a.id)}')">
-            <span>${escHtml(a.avatar || '🤖')}</span>
-            <span class="truncate">${escHtml(a.name)}</span>
-          </div>
-        `).join('');
-      } catch (err) {
-        document.getElementById('sessions-agents-list').innerHTML = `<p class="text-dim text-sm" style="padding:12px;">${err.message}</p>`;
-      }
+      } catch (_) {}
     },
-    onMount() {},
-    onSSEEvent() {},
   };
 })();
