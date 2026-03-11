@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+# Keep the example template
+!.env.example
+
+# Persistent data volume — never commit runtime data
+/data/*
+!/data/.gitkeep
+
+# WhatsApp Baileys session files
+auth_whatsapp/
+
+# Log files
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Reference repo (cloned separately — not part of this codebase)
+reference/
+
+# macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build output
+dist/
+build/
+out/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Runtime
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache
+.npm

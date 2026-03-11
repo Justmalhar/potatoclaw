@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PotatoClaw Mission Control</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <nav id="sidebar" class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">🥔</span>
+        <span class="logo-text">PotatoClaw</span>
+      </div>
+
+      <ul class="nav-list" id="nav-list">
+        <li class="nav-item" data-page="dashboard">
+          <span class="nav-icon">⚡</span>
+          <span class="nav-label">Dashboard</span>
+        </li>
+        <li class="nav-item" data-page="kanban">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">Kanban</span>
+        </li>
+        <li class="nav-item" data-page="agents">
+          <span class="nav-icon">🤖</span>
+          <span class="nav-label">Agents</span>
+        </li>
+        <li class="nav-item" data-page="runs">
+          <span class="nav-icon">▶️</span>
+          <span class="nav-label">Runs</span>
+        </li>
+        <li class="nav-item" data-page="channels">
+          <span class="nav-icon">📡</span>
+          <span class="nav-label">Channels</span>
+        </li>
+        <li class="nav-item" data-page="memory">
+          <span class="nav-icon">🧠</span>
+          <span class="nav-label">Memory</span>
+        </li>
+        <li class="nav-item" data-page="sessions">
+          <span class="nav-icon">💬</span>
+          <span class="nav-label">Sessions</span>
+        </li>
+        <li class="nav-item" data-page="scheduler">
+          <span class="nav-icon">🕐</span>
+          <span class="nav-label">Scheduler</span>
+        </li>
+        <li class="nav-item" data-page="secrets">
+          <span class="nav-icon">🔐</span>
+          <span class="nav-label">Secrets</span>
+        </li>
+        <li class="nav-item" data-page="logs">
+          <span class="nav-icon">📜</span>
+          <span class="nav-label">Logs</span>
+        </li>
+        <li class="nav-item" data-page="settings">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-label">Settings</span>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <span id="sse-status" class="sse-status sse-connecting" title="SSE Connection">●</span>
+        <span class="sidebar-version" id="sidebar-version">v2.0</span>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <div class="main-wrapper">
+      <!-- Top bar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">☰</button>
+          <h1 class="page-title" id="page-title">Dashboard</h1>
+        </div>
+        <div class="topbar-right">
+          <span class="topbar-time" id="topbar-time"></span>
+          <div class="topbar-connection" id="topbar-connection">
+            <span class="conn-dot conn-ok"></span>
+            <span class="conn-label">Live</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Page container -->
+      <main id="page-container" class="page-container">
+        <div class="loading-spinner-wrap">
+          <div class="spinner"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal overlay -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal" id="modal">
+      <button class="modal-close" id="modal-close">✕</button>
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

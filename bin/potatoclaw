@@ -1,0 +1,416 @@
+#!/usr/bin/env node
+'use strict';
+
+// Load .env as early as possible so all subsequent requires see the env vars.
+require('dotenv').config();
+
+const path = require('path');
+const { createLogger } = require('../src/utils/logger');
+
+const log = createLogger('cli');
+
+// ---------------------------------------------------------------------------
+// Banner
+// ---------------------------------------------------------------------------
+
+async function printBanner() {
+  try {
+    const { default: logo } = await import('oh-my-logo');
+    await logo('PotatoClaw', {
+      font: 'doom',
+      colors: ['yellow', 'green'],
+    });
+  } catch (_) {
+    // oh-my-logo is optional — fall back to plain text
+    console.log('\n  🥔 PotatoClaw v2.0 — Autonomous Multi-Agent Company\n');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Command handlers
+// ---------------------------------------------------------------------------
+
+async function cmdStart() {
+  console.log('Starting PotatoClaw...\n');
+  try {
+    const gateway = require('../src/core/gateway');
+    await gateway.start();
+  } catch (err) {
+    if (err.code === 'MODULE_NOT_FOUND') {
+      console.error('Gateway module not yet implemented. Run `npm install` first.');
+      console.error(err.message);
+    } else {
+      console.error('Failed to start gateway:', err.message);
+      log.error({ err }, 'Gateway start failed');
+    }
+    process.exit(1);
+  }
+}
+
+async function cmdChat(args) {
+  const agentIdx = args.indexOf('--agent');
+  const agentId = agentIdx !== -1 ? args[agentIdx + 1] : null;
+
+  console.log(`\nStarting terminal chat${agentId ? ` with agent: ${agentId}` : ' (default agent)'}...`);
+  console.log('Type your message and press Enter. Use Ctrl+C to exit.\n');
+
+  let agent;
+  try {
+    const { createTerminalAgent } = require('../src/agents/terminal');
+    agent = await createTerminalAgent(agentId);
+  } catch (err) {
+    if (err.code === 'MODULE_NOT_FOUND') {
+      // Fall back to a simple Claude SDK chat if the full stack isn't built yet
+      await simpleChat(agentId);
+      return;
+    }
+    throw err;
+  }
+
+  const readline = require('readline');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: '\nYou: ',
+  });
+
+  rl.prompt();
+
+  rl.on('line', async (line) => {
+    const text = line.trim();
+    if (!text) {
+      rl.prompt();
+      return;
+    }
+    rl.pause();
+    try {
+      const response = await agent.chat(text);
+      console.log(`\nAgent: ${response}\n`);
+    } catch (err) {
+      console.error(`\nError: ${err.message}\n`);
+    }
+    rl.resume();
+    rl.prompt();
+  });
+
+  rl.on('close', () => {
+    console.log('\nGoodbye!');
+    process.exit(0);
+  });
+}
+
+/**
+ * Minimal fallback chat using the Anthropic Claude SDK directly.
+ * Used when the full potatoclaw stack isn't built yet.
+ */
+async function simpleChat(agentId) {
+  const readline = require('readline');
+
+  let client;
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+  } catch (_) {
+    console.error('Could not load @anthropic-ai/sdk. Run: npm install');
+    process.exit(1);
+  }
+
+  const config = require('../config/default');
+  const model = config.agent.defaultModel;
+  const messages = [];
+
+  console.log(`Using model: ${model} | Agent: ${agentId || 'default'}`);
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: '\nYou: ',
+  });
+
+  rl.prompt();
+
+  rl.on('line', async (line) => {
+    const text = line.trim();
+    if (!text) { rl.prompt(); return; }
+
+    messages.push({ role: 'user', content: text });
+    rl.pause();
+
+    try {
+      const res = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        messages,
+      });
+      const reply = res.content[0].text;
+      messages.push({ role: 'assistant', content: reply });
+      console.log(`\nAgent: ${reply}\n`);
+    } catch (err) {
+      console.error(`\nAPI Error: ${err.message}\n`);
+    }
+
+    rl.resume();
+    rl.prompt();
+  });
+
+  rl.on('close', () => {
+    console.log('\nGoodbye!');
+    process.exit(0);
+  });
+}
+
+async function cmdSetup() {
+  console.log('\nPotatoClaw Setup Wizard\n');
+  console.log('This wizard helps you configure your messaging adapters.\n');
+
+  const readline = require('readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (q) => new Promise((res) => rl.question(q, res));
+
+  console.log('Which adapters would you like to enable?');
+  const enableSlack = (await ask('  Slack [y/N]: ')).toLowerCase() === 'y';
+  const enableTelegram = (await ask('  Telegram [y/N]: ')).toLowerCase() === 'y';
+  const enableDiscord = (await ask('  Discord [y/N]: ')).toLowerCase() === 'y';
+
+  console.log('\nAdd the following to your .env file:\n');
+
+  if (enableSlack) {
+    console.log('SLACK_BOT_TOKEN=xoxb-your-token-here');
+    console.log('SLACK_APP_TOKEN=xapp-your-app-token-here');
+    console.log('SLACK_SIGNING_SECRET=your-signing-secret-here');
+  }
+  if (enableTelegram) {
+    console.log('TELEGRAM_BOT_TOKEN=your-bot-token-here');
+  }
+  if (enableDiscord) {
+    console.log('DISCORD_BOT_TOKEN=your-discord-bot-token-here');
+  }
+  if (!enableSlack && !enableTelegram && !enableDiscord) {
+    console.log('(no adapters selected)');
+  }
+
+  console.log('\nALWAYS set:');
+  console.log('ANTHROPIC_API_KEY=sk-ant-...');
+  console.log('UI_PASSWORD=your-secure-password\n');
+
+  rl.close();
+}
+
+async function cmdUi() {
+  const config = require('../config/default');
+  const port = config.ui.port;
+  const url = `http://localhost:${port}`;
+
+  console.log(`Opening Mission Control at ${url} ...`);
+
+  const { exec } = require('child_process');
+  const platform = process.platform;
+  let openCmd;
+  if (platform === 'darwin') openCmd = `open "${url}"`;
+  else if (platform === 'win32') openCmd = `start "" "${url}"`;
+  else openCmd = `xdg-open "${url}"`;
+
+  exec(openCmd, (err) => {
+    if (err) {
+      console.log(`Could not open browser automatically. Navigate to: ${url}`);
+    }
+  });
+}
+
+async function cmdAgentsList() {
+  const config = require('../config/default');
+  const fs = require('fs');
+  const agentsDir = path.join(config.dataDir, 'agents');
+
+  if (!fs.existsSync(agentsDir)) {
+    console.log('No agents defined yet. Create agents via the Mission Control UI.');
+    return;
+  }
+
+  const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.json'));
+  if (files.length === 0) {
+    console.log('No agents defined yet. Create agents via the Mission Control UI.');
+    return;
+  }
+
+  console.log('\nDefined agents:\n');
+  for (const file of files) {
+    try {
+      const def = JSON.parse(fs.readFileSync(path.join(agentsDir, file), 'utf8'));
+      const status = def.status || 'idle';
+      console.log(`  ${def.avatar || '🤖'}  ${def.id.padEnd(20)} ${def.name.padEnd(30)} [${status}]`);
+      if (def.description) {
+        console.log(`     ${def.description}`);
+      }
+    } catch (_) {
+      console.log(`  (invalid) ${file}`);
+    }
+  }
+  console.log('');
+}
+
+async function cmdTasksList() {
+  const config = require('../config/default');
+  const fs = require('fs');
+  const dbPath = path.join(config.dataDir, 'tasks.db');
+
+  if (!fs.existsSync(dbPath)) {
+    console.log('No tasks database found. Start the server to initialize it.');
+    return;
+  }
+
+  try {
+    const Database = require('better-sqlite3');
+    const db = new Database(dbPath, { readonly: true });
+    const tasks = db.prepare('SELECT id, title, status, priority, assigned_agent_id FROM tasks ORDER BY created_at DESC LIMIT 20').all();
+    db.close();
+
+    if (tasks.length === 0) {
+      console.log('No tasks yet. Create tasks via Mission Control.');
+      return;
+    }
+
+    console.log('\nRecent tasks (last 20):\n');
+    console.log('  ID               TITLE                          STATUS         PRIORITY   AGENT');
+    console.log('  ' + '-'.repeat(90));
+    for (const t of tasks) {
+      const id = (t.id || '').slice(0, 14).padEnd(16);
+      const title = (t.title || '').slice(0, 30).padEnd(31);
+      const status = (t.status || '').padEnd(14);
+      const priority = (t.priority || '').padEnd(10);
+      const agent = t.assigned_agent_id || '(unassigned)';
+      console.log(`  ${id} ${title} ${status} ${priority} ${agent}`);
+    }
+    console.log('');
+  } catch (err) {
+    if (err.code === 'MODULE_NOT_FOUND') {
+      console.error('better-sqlite3 not installed. Run: npm install');
+    } else {
+      console.error('Could not read tasks:', err.message);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Interactive menu (default — no args)
+// ---------------------------------------------------------------------------
+
+async function showMenu() {
+  const readline = require('readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  console.log('');
+  console.log('  What would you like to do?\n');
+  console.log('  [1] Start PotatoClaw (gateway + UI)');
+  console.log('  [2] Chat with an agent (terminal)');
+  console.log('  [3] Run setup wizard');
+  console.log('  [4] Open Mission Control UI in browser');
+  console.log('  [5] List agents');
+  console.log('  [6] List tasks');
+  console.log('  [q] Quit\n');
+
+  rl.question('  Choice: ', async (answer) => {
+    rl.close();
+    console.log('');
+    switch (answer.trim().toLowerCase()) {
+      case '1': await cmdStart(); break;
+      case '2': await cmdChat([]); break;
+      case '3': await cmdSetup(); break;
+      case '4': await cmdUi(); break;
+      case '5': await cmdAgentsList(); break;
+      case '6': await cmdTasksList(); break;
+      case 'q':
+        console.log('Goodbye!');
+        process.exit(0);
+        break;
+      default:
+        console.log('Unknown option. Exiting.');
+        process.exit(0);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Entrypoint
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const command = argv[0];
+
+  // Print banner for interactive commands
+  const interactiveCommands = [undefined, 'chat', 'setup'];
+  if (!command || interactiveCommands.includes(command)) {
+    await printBanner();
+  }
+
+  switch (command) {
+    case 'start':
+      await cmdStart();
+      break;
+
+    case 'chat':
+      await cmdChat(argv.slice(1));
+      break;
+
+    case 'setup':
+      await cmdSetup();
+      break;
+
+    case 'ui':
+      await cmdUi();
+      break;
+
+    case 'agents':
+      if (argv[1] === 'list') {
+        await cmdAgentsList();
+      } else {
+        console.error(`Unknown subcommand: agents ${argv[1] || ''}`);
+        console.error('Usage: potatoclaw agents list');
+        process.exit(1);
+      }
+      break;
+
+    case 'tasks':
+      if (argv[1] === 'list') {
+        await cmdTasksList();
+      } else {
+        console.error(`Unknown subcommand: tasks ${argv[1] || ''}`);
+        console.error('Usage: potatoclaw tasks list');
+        process.exit(1);
+      }
+      break;
+
+    case '--help':
+    case '-h':
+    case 'help':
+      await printBanner();
+      console.log('Usage: potatoclaw <command> [options]\n');
+      console.log('Commands:');
+      console.log('  start               Start gateway, orchestrator, and Mission Control UI');
+      console.log('  chat [--agent <id>] Interactive terminal chat with an agent');
+      console.log('  setup               Run the adapter setup wizard');
+      console.log('  ui                  Open Mission Control in the browser');
+      console.log('  agents list         List all defined agents');
+      console.log('  tasks list          List recent tasks\n');
+      console.log('Options:');
+      console.log('  --agent <id>        Agent ID to use for chat');
+      console.log('  -h, --help          Show this help\n');
+      break;
+
+    case undefined:
+      await showMenu();
+      break;
+
+    default:
+      console.error(`Unknown command: ${command}`);
+      console.error('Run `potatoclaw --help` for usage.');
+      process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  console.error('Fatal error:', err.message);
+  log.error({ err }, 'CLI fatal error');
+  process.exit(1);
+});

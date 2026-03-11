@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  potatoclaw:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: potatoclaw
+    ports:
+      - "${GATEWAY_PORT:-4096}:4096"
+      - "${UI_PORT:-4200}:4200"
+    volumes:
+      - potatoclaw_data:/data
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - COMPOSIO_API_KEY=${COMPOSIO_API_KEY:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - UI_PASSWORD=${UI_PASSWORD:-changeme}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DATA_DIR=/data
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4096/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  potatoclaw_data:
+    driver: local
