@@ -63,12 +63,12 @@ async function startUiServer(opts = {}) {
   // -------------------------------------------------------------------------
   // Basic auth middleware (if UI_PASSWORD is set)
   // -------------------------------------------------------------------------
-  const uiPassword = process.env.UI_PASSWORD;
+  const uiUsername = process.env.UI_USERNAME || 'admin';
+  const uiPassword = process.env.UI_PASSWORD || 'admin';
 
   server.addHook('onRequest', async (request, reply) => {
-    // Skip auth for static assets and SSE
     const url = request.url;
-    if (!uiPassword) return;
+    // Skip auth for static assets
     if (url === '/' || url.startsWith('/styles') || url.startsWith('/app') || url.startsWith('/pages') || url.startsWith('/components')) {
       return;
     }
@@ -84,9 +84,10 @@ async function startUiServer(opts = {}) {
     const b64 = authHeader.slice(6);
     const decoded = Buffer.from(b64, 'base64').toString('utf-8');
     const colonIdx = decoded.indexOf(':');
+    const username = colonIdx >= 0 ? decoded.slice(0, colonIdx) : '';
     const password = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : decoded;
 
-    if (password !== uiPassword) {
+    if (username !== uiUsername || password !== uiPassword) {
       reply.header('WWW-Authenticate', 'Basic realm="PotatoClaw Mission Control"');
       reply.code(401).send({ error: 'Invalid credentials' });
       return;
