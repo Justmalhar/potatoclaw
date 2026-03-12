@@ -70,7 +70,7 @@ ENV PATH="/home/claw/.local/bin:${PATH}"
 
 # Gateway HTTP  : health check + WhatsApp QR
 # Mission Control UI + REST API + SSE
-EXPOSE 4096 4200
+EXPOSE 4400 4401
 
 VOLUME /data
 

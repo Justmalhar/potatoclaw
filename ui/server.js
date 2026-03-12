@@ -58,7 +58,6 @@ async function startUiServer(opts = {}) {
   await server.register(fastifyStatic, {
     root: path.join(__dirname, 'public'),
     prefix: '/',
-    decorateReply: false,
   });
 
   // -------------------------------------------------------------------------
