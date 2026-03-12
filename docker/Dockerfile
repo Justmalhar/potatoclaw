@@ -6,7 +6,7 @@ FROM node:20-slim AS deps
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --production --legacy-peer-deps
 
 # =============================================================================
 # Stage 2: final image
