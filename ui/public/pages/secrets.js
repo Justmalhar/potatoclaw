@@ -233,8 +233,9 @@
   window.Pages.secrets = {
     async render(container) {
       container.innerHTML = `
-        <div class="secrets-warning">
-          ⚠️ Changes to secrets require an application restart to take effect.
+        <div class="secrets-warning" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>⚠️ Changes to secrets require a restart to take effect.</span>
+          <button class="btn btn-danger btn-sm" id="restart-btn" onclick="SecretsPage._restart()">🔄 Restart Now</button>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
           <h2 style="font-size:15px;font-weight:700;">Secrets Manager</h2>
@@ -250,6 +251,20 @@
 
       window.SecretsPage._showAdd = () => showAddModal(null);
       window.SecretsPage._showOpenRouter = () => showOpenRouterModal();
+      window.SecretsPage._restart = async () => {
+        if (!confirm('Restart PotatoClaw now? The UI will be unavailable for a few seconds.')) return;
+        const btn = document.getElementById('restart-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Restarting...'; }
+        try {
+          await api('POST', '/api/system/restart');
+          toast('Restarting... reconnecting in 5s', 'success');
+          setTimeout(() => window.location.reload(), 5000);
+        } catch (_) {
+          // Expected — server closed the connection
+          toast('Restarting... reconnecting in 5s', 'success');
+          setTimeout(() => window.location.reload(), 5000);
+        }
+      };
 
       try {
         const res = await api('GET', '/api/secrets');

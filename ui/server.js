@@ -219,6 +219,7 @@ async function startUiServer(opts = {}) {
     './api/scheduler',
     './api/logs',
     './api/settings',
+    './api/system',
   ];
 
   for (const mod of apiModules) {

@@ -34,6 +34,15 @@
               <div class="loading-spinner-wrap"><div class="spinner"></div></div>
             </div>
           </div>
+          <div class="card mb-4">
+            <div class="card-header"><span class="card-title">System</span></div>
+            <div style="padding:16px 0;">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+                Restart the application to apply secrets and environment changes.
+              </p>
+              <button class="btn btn-danger" id="sys-restart-btn" onclick="SettingsPage._restart()">🔄 Restart PotatoClaw</button>
+            </div>
+          </div>
           <div class="card">
             <div class="card-header"><span class="card-title">About</span></div>
             <div id="settings-about" style="padding:4px 0;"></div>
@@ -100,7 +109,19 @@
         document.getElementById('settings-form').innerHTML = `<p style="color:var(--red);padding:4px 0;">${esc(err.message)}</p>`;
       }
 
-      window.SettingsPage = { _save: saveSettings };
+      window.SettingsPage = {
+        _save: saveSettings,
+        _restart: async () => {
+          if (!confirm('Restart PotatoClaw now? The UI will be unavailable for a few seconds.')) return;
+          const btn = document.getElementById('sys-restart-btn');
+          if (btn) { btn.disabled = true; btn.textContent = '⏳ Restarting...'; }
+          try {
+            await api('POST', '/api/system/restart');
+          } catch (_) {}
+          toast('Restarting... page will reload in 6s', 'success');
+          setTimeout(() => window.location.reload(), 6000);
+        },
+      };
     },
   };
 })();
