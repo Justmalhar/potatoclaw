@@ -110,8 +110,7 @@ async function start(opts = {}) {
   // 8. Cron scheduler
   // -------------------------------------------------------------------------
   const { CronScheduler } = require('./tools/cron');
-  const cronScheduler = new CronScheduler({ dataDir: DATA_DIR });
-  await cronScheduler.load();
+  const cronScheduler = new CronScheduler(path.join(DATA_DIR, 'cron-jobs.json'));
 
   // -------------------------------------------------------------------------
   // 9. Command handler
