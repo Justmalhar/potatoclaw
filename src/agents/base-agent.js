@@ -69,6 +69,9 @@ class BaseAgent extends EventEmitter {
     this._status      = 'idle';
     this._currentTask = null;
 
+    // Logger must be created before _wireMcpServers which uses this._log
+    this._log = createLogger(`agent:${definition.id}`);
+
     // Wire MCP servers: prefer injected map, then auto-wire from definition.tools
     if (mcpTools) {
       this._mcpServers = mcpTools;
@@ -87,8 +90,6 @@ class BaseAgent extends EventEmitter {
     if (definition.model) {
       this._provider.setModel(definition.model);
     }
-
-    this._log = createLogger(`agent:${definition.id}`);
   }
 
   // ---------------------------------------------------------------------------
