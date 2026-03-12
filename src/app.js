@@ -39,6 +39,15 @@ async function start(opts = {}) {
   const SecretsStore = require('./utils/secrets');
   const secretsStore = new SecretsStore(DATA_DIR);
 
+  // Inject stored secrets into process.env so all downstream modules pick them up
+  try {
+    const storedSecrets = await secretsStore.getAll();
+    for (const [k, v] of Object.entries(storedSecrets)) {
+      if (!(k in process.env)) process.env[k] = v;
+    }
+    log.info('Secrets injected into environment');
+  } catch (_) {}
+
   const TaskStore = require('./tasks/store');
   const taskStore = new TaskStore(DATA_DIR);
   taskStore.init();
