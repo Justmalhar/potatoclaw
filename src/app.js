@@ -106,11 +106,6 @@ async function start(opts = {}) {
     channelContext,
   });
 
-  // Wire all already-loaded runners to orchestrator
-  for (const [agentId] of agentRegistry.getAll()) {
-    orchestrator._wireRunner(agentId);
-  }
-
   // -------------------------------------------------------------------------
   // 8. Cron scheduler
   // -------------------------------------------------------------------------
