@@ -2,6 +2,8 @@
 
 Self-hosted autonomous multi-agent company platform. Run named AI agents that live in your Slack, Telegram, Discord, and other messaging channels — each with their own memory, task queue, and toolset. Includes a Mission Control web UI for managing everything.
 
+![Demo](https://raw.githubusercontent.com/Justmalhar/potatoclaw/refs/heads/main/demo.png)
+
 ## Features
 
 - **Multi-agent registry** — N named agents, each with isolated memory, sessions, and MCP tool configuration
